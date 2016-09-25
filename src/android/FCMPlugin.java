@@ -31,9 +31,6 @@ public class FCMPlugin extends CordovaPlugin {
 	public static String notificationCallBack = "FCMPlugin.onNotificationReceived";
 	public static String pushSuccessCallBack = "FCMPlugin.onPushSuccess";
 	public static String pushErrorCallBack = "FCMPlugin.onPushError";
-	public static Boolean notificationCallBackReady = false;
-	public static Boolean pushSuccessCallBackReady = false;
-	public static Boolean pushErrorCallBackReady = false;
 
 	public static String senderId;
 	public static Map<String, Object> lastPush = null;
@@ -72,7 +69,7 @@ public class FCMPlugin extends CordovaPlugin {
 					public void run() {
 						try{
 							String token = FirebaseInstanceId.getInstance().getToken();
-							callbackContext.success( FirebaseInstanceId.getInstance().getToken() );
+							callbackContext.success( token );
 							Log.d(TAG,"\tToken: "+ token);
 						}catch(Exception e){
 							Log.d(TAG,"\tError retrieving token");
@@ -82,12 +79,10 @@ public class FCMPlugin extends CordovaPlugin {
 			}
 			// NOTIFICATION CALLBACK REGISTER //
 			else if (action.equals("registerNotification")) {
-				notificationCallBackReady = true;
 				cordova.getActivity().runOnUiThread(new Runnable() {
 					public void run() {
 						if(lastPush != null) FCMPlugin.sendNotification( lastPush );
 						lastPush = null;
-						// FCMPlugin.handleUnsent(notificationCallBack);
 						callbackContext.success();
 					}
 				});
@@ -121,15 +116,21 @@ public class FCMPlugin extends CordovaPlugin {
         cordova.getThreadPool().execute(new Runnable() {
           public void run() {
             try{
-              JSONObject pushData = args.getJSONObject(0);
-              String messageID = String.valueOf(new Random().nextLong());
+							// String token = FirebaseInstanceId.getInstance().getToken();
+							// Log.d(TAG, token);
 
-							pushSuccessCallBackReady = args.optBoolean(1, false);
-							pushErrorCallBackReady = args.optBoolean(2, false);
+              JSONObject pushData = args.getJSONObject(0);
+              String messageID = args.isNull(1) ? String.valueOf(Math.abs(new Random().nextLong())) : args.getString(1);
 
               RemoteMessage.Builder msg = new RemoteMessage.Builder(senderId + "@gcm.googleapis.com")
-                .setMessageId(messageID)
-								.setTtl(86400);
+                .setMessageId(messageID);
+
+							if (!args.isNull(2)) {
+								msg.setTtl(args.getInt(2));
+							}
+							if (!args.isNull(3)) {
+								msg.setMessageType(args.getString(3));
+							}
 
               Iterator<String> dataKeys = pushData.keys();
               while(dataKeys.hasNext()) {
@@ -152,62 +153,49 @@ public class FCMPlugin extends CordovaPlugin {
 				return false;
 			}
 		}catch(Exception e){
-			Log.d(TAG, "ERROR: onPluginAction: " + e.getMessage());
+			Log.e(TAG, "ERROR: onPluginAction: " + e.getMessage());
 			callbackContext.error(e.getMessage());
 			return false;
 		}
 
-		//cordova.getThreadPool().execute(new Runnable() {
-		//	public void run() {
-		//	  //
-		//	}
-		//});
-
-		//cordova.getActivity().runOnUiThread(new Runnable() {
-        //    public void run() {
-        //      //
-        //    }
-        //});
 		return true;
 	}
 
 	public static void sendPushSuccess(Map<String, Object> payload) {
-		Log.d(TAG, "==> FCMPlugin sendPushSuccess");
-		FCMPlugin.sendPushPayload(pushSuccessCallBack, pushSuccessCallBackReady, payload);
+		// Log.d(TAG, "==> FCMPlugin sendPushSuccess");
+		FCMPlugin.sendPushPayload(pushSuccessCallBack, payload);
 	}
 
 	public static void sendPushError(Map<String, Object> payload) {
-		Log.d(TAG, "==> FCMPlugin sendPushError");
-		FCMPlugin.sendPushPayload(pushErrorCallBack, pushErrorCallBackReady, payload);
+		// Log.d(TAG, "==> FCMPlugin sendPushError");
+		FCMPlugin.sendPushPayload(pushErrorCallBack, payload);
 	}
 
 	public static void sendNotification(Map<String, Object> payload) {
-		Log.d(TAG, "==> FCMPlugin sendNotification");
-		FCMPlugin.sendPushPayload(notificationCallBack, notificationCallBackReady, payload);
+		// Log.d(TAG, "==> FCMPlugin sendNotification");
+		FCMPlugin.sendPushPayload(notificationCallBack, payload);
 	}
 
-	private static void sendPushPayload(String handler, Boolean handlerReady, Map<String, Object> payload) {
-		Log.d(TAG, "\tcallBackReady: " + handlerReady);
-		Log.d(TAG, "\tgWebView: " + gWebView);
+	private static void sendPushPayload(String handler, Map<String, Object> payload) {
+		// Log.d(TAG, "\tgWebView: " + gWebView);
 	  try {
 		  JSONObject jo = new JSONObject();
 			for (String key : payload.keySet()) {
 				jo.put(key, payload.get(key));
-				Log.d(TAG, "\tpayload: " + key + " => " + payload.get(key));
+				// Log.d(TAG, "\tpayload: " + key + " => " + payload.get(key));
       }
 
 			String callBack = "javascript:" + handler + "(" + jo.toString() + ")";
-			if(handlerReady && gWebView != null) {
+			if(gWebView != null) {
 				Log.d(TAG, "\tSent PUSH to view: " + callBack);
 				gWebView.sendJavascript(callBack);
-			} else {
+			} else if(handler.equals(notificationCallBack)) {
 				Log.d(TAG, "\tView not ready. SAVED NOTIFICATION: " + callBack);
 				lastPush = payload;
 			}
 		} catch (Exception e) {
-			Log.d(TAG, "\tERROR: " + e.getMessage());
-			// can throw, was either a JSON or Map exception. Which means something is misformatted s
-			// lastPush = payload;
+			// can throw, was either a JSON or Map exception. Which means something is misformatted
+			Log.e(TAG, "\tERROR: " + e.getMessage());
 		}
 	}
 }

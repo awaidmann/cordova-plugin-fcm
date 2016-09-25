@@ -21,30 +21,57 @@ FCMPlugin.prototype.unsubscribeFromTopic = function( topic, success, error ){
 	exec(success, error, "FCMPlugin", 'unsubscribeFromTopic', [topic]);
 }
 // SEND UPSTREAM PUSH NOTIFICATION //
-FCMPlugin.prototype.sendUpstreamPush = function(pushData, callback, success, error){
-	FCMPlugin.prototype.onPushSuccess = success || FCMPlugin.onPushSuccess;
-	FCMPlugin.prototype.onPushError = error || FCMPlugin.onPushError;
-	exec(callback, FCMPlugin.onPushError, "FCMPlugin", 'sendUpstreamPush', [pushData, Boolean(success), Boolean(error)]);
+FCMPlugin.prototype.sendUpstreamPush = function(pushData, options, callback, success, error){
+	FCMPlugin.prototype.onPushSuccess = onPushSuccessHandler(success);
+	FCMPlugin.prototype.onPushError = onPushErrorHandler(error);
+	var params = options || {}
+	exec(callback, FCMPlugin.onPushError, "FCMPlugin", 'sendUpstreamPush', [pushData, params.msgId, params.ttl, params.msgType]);
 }
 // NOTIFICATION CALLBACK //
 FCMPlugin.prototype.onNotification = function( callback, success, error ){
-	FCMPlugin.prototype.onNotificationReceived = callback;
+	FCMPlugin.prototype.onNotificationReceived = onNotificationReceivedHandler(callback);
 	exec(success, error, "FCMPlugin", 'registerNotification',[]);
 }
 // DEFAULT NOTIFICATION CALLBACK //
-FCMPlugin.prototype.onNotificationReceived = function(payload){
-	console.log("Received push notification");
-	console.log(payload);
+FCMPlugin.prototype.onNotificationReceived = onNotificationReceivedHandler();
+FCMPlugin.prototype.onPushSuccess = onPushSuccessHandler();
+FCMPlugin.prototype.onPushError = onPushErrorHandler();
+
+function onNotificationReceivedHandler(callback) {
+	return payload => {
+		console.log('noti handler')
+		if (callback) {
+			return callback(payload);
+		} else {
+			console.log("Received push notification");
+			console.log(payload);
+		}
+	}
 }
 
-FCMPlugin.prototype.onPushSuccess = function(payload){
-	console.log("Successfully sent upstream push");
-	console.log(payload);
+function onPushSuccessHandler(callback) {
+	return payload => {
+		if (callback) {
+			return callback(payload.msgId);
+		} else {
+			console.log("Successfully sent upstream push");
+			console.log(payload);
+		}
+	}
 }
 
-FCMPlugin.prototype.onPushError = function(payload){
-	console.log("Upstream push has failed");
-	console.log(payload);
+function onPushErrorHandler(callback) {
+	return payload => {
+		if (callback) {
+			var err = new Error();
+			err.name = payload.error;
+			err.code = payload.errorCode;
+			return callback(payload.msgId, err);
+		} else {
+			console.log("Upstream push has failed");
+			console.log(payload);
+		}
+	}
 }
 
 // FIRE READY //
